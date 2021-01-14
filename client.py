@@ -1,15 +1,18 @@
+import os
+
 from pydrive.drive import GoogleDrive
 from pydrive.auth import GoogleAuth
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 CREDENTIALS_FILE = 'credentials.json'
+VERBOSE = True
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 def authenticate(credentials_file):
+    verbose("Authenticating request...")
     google_auth = GoogleAuth()
     google_auth.LoadCredentialsFile(credentials_file)
 
@@ -21,7 +24,7 @@ def authenticate(credentials_file):
         google_auth.Authorize()
 
     google_auth.SaveCredentialsFile(credentials_file)
-
+    verbose("Authentication successfull")
     return google_auth
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -32,6 +35,12 @@ def is_dir(file_data):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+
+def verbose(message):
+    if VERBOSE:
+        print(message)
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 def get_files(path):
     if path and path[0] == '/':
@@ -69,7 +78,7 @@ def list_files(path):
 
     # If directory, then go inside and get the information of its content
     if is_dir(files[0]):
-        files = drive.ListFile({'q': f"'{files[0]['id']}' in parents"}).GetList()
+        files = drive.ListFile({'q': f"'{files[0]['id']}' in parents and trashed=false"}).GetList()
 
     return files
 
@@ -84,7 +93,6 @@ def path_exist(path):
 
 def create_path(path):
     if not path_exist(path):
-
         if path and path[0] == '/':
             path = path[1:]
 
@@ -105,9 +113,50 @@ def create_path(path):
                 folder.Upload()
 
             path_built += f'/{path_name}'
-            files = get_files(path_built)
+            files = list_files(path_built)
 
-    print(f"Created path --> {path}")
+        verbose(f"Created path --> {path}")
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
+def upload_file(local_path, drive_path):
+    if path_exist(drive_path):
+        verbose("The folder or file path already exists. Exiting...")
+        return
+
+    if not os.path.exists(local_path):
+        verbose(f"{local_path} does not exist. Exiting...")
+        return
+
+    base_name = os.path.basename(drive_path)
+    path_name = os.path.dirname(drive_path)
+
+    create_path(drive_path)
+
+    if os.path.isfile(local_path):
+        path_id = get_files(path_name)[0]['id']
+
+        verbose(f"Uploading {local_path} file to {drive_path}")
+        file = drive.CreateFile({'parents': [{'id': path_id}], 'title': base_name})
+        file.SetContentFile(local_path)
+        file.Upload()
+        verbose(f"File {drive_path} uploaded successfully")
+
+    elif os.path.isdir(local_path):
+        path_id = get_files(drive_path)[0]['id']
+
+        for item in os.listdir(local_path):
+            item_path = f"{local_path}/{item}"
+            if os.path.isfile(item_path):
+                file = drive.CreateFile({'parents': [{'id': path_id}], 'title': item})
+                file.SetContentFile(f"{local_path}/{item}")
+                file.Upload()
+            elif os.path.isdir(item_path):
+                upload_file(item_path, f"{drive_path}/{item}")
+    else:
+        print("Path is not detected as file or directory. Exiting...")
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -116,26 +165,4 @@ if __name__ == "__main__":
     google_auth = authenticate(CREDENTIALS_FILE)
     drive = GoogleDrive(google_auth)
 
-    # files = list_files('/')
-    # files = get_files('/apps/test')
-
-    # for file in files:
-    #     print(f"title = {file['title']} -- id = {file['id']}")
-    # # print(path_exist('/pepe'))
-
-    # files = list_files('/apps/test/do_not_delete.txt')
-
-    # for file in files:
-    #     print(f"title = {file['title']} -- id = {file['id']}")
-
-    # print("UPLOADING")
-    # file5 = drive.CreateFile({'parents': [{'id': }]})
-    # file5.SetContentFile('test.jpg')
-    # file5.Upload()
-    # print("UPLOADED")
-
-    create_path('/aaa/bbb')
-
-    # folder = drive.CreateFile({'parents': [{'id': 'root'}], 'title': 'pepe',
-    #                            'mimeType': 'application/vnd.google-apps.folder'})
-    # folder.Upload()
+    upload_file('aa', '/a/b/c/aa')
