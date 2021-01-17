@@ -1,5 +1,6 @@
 import os
 import shutil
+import argparse
 
 from pydrive.drive import GoogleDrive
 from pydrive.auth import GoogleAuth
@@ -91,6 +92,58 @@ def create_local_path(local_path):
     os.makedirs(local_path)
 
 # ----------------------------------------------------------------------------------------------------------------------
+
+
+def check_script_parameters(user_parameters):
+    """
+    Validate user main parameters
+
+    Parameters
+    ----------
+    user_parameters: <argparse.Namespace>
+        User script parameters
+
+    Returns
+    -------
+    Boolean:
+        True if parameters are correct, False otherwise
+    """
+
+    parameters_value = [parameter for parameter in [user_parameters.upload, user_parameters.download,
+                                                    user_parameters.remove] if parameter is not None]
+
+    if len(parameters_value) > 1:
+        error_verbose('You just have to select one of the following flags: --upload, --download or --remove')
+        return False
+    elif user_parameters.upload is None and user_parameters.download is None and user_parameters.remove is None:
+        error_verbose('You need select one of the following required flags: --upload, --download or --remove')
+        return False
+
+    return True
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
+def process_user_request(user_parameters):
+    """
+    Carry out the user's request. Important: You have to validate the user parameters before calling this function
+
+    Parameters
+    ----------
+    user_parameters: <argparse.Namespace>
+        User script parameters
+    """
+
+    if user_parameters.upload is not None:
+        upload_files_to_drive(user_parameters.upload[0], user_parameters.upload[1])
+    elif user_parameters.download is not None:
+        download_drive_files(user_parameters.download[0], user_parameters.download[1])
+    elif user_parameters.remove is not None:
+        delete_drive_files(user_parameters.remove)
+    else:
+        error_verbose("Could not process the user request")
+
+# ----------------------------------------------------------------------------------------------------------------------
 #                                                  DRIVE FUNCTIONS                                                     #
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -163,7 +216,6 @@ def authenticate(credentials_file):
 
     google_auth.SaveCredentialsFile(credentials_file)
     action_status_verbose()
-    print(type(google_auth))
 
     return google_auth
 
@@ -280,6 +332,38 @@ def create_drive_path(path):
 # ----------------------------------------------------------------------------------------------------------------------
 
 
+def delete_drive_files(drive_path, trash=True):
+    """
+    Delete a drive file or folder
+
+    Parameters
+    ----------
+    drive_path: str
+        Drive path to delete
+    trash: boolean
+        If True the file/folder will be sent to the trash, otherwise the file will be removed permanently
+    """
+
+    if path_exist_in_drive(drive_path):
+        file_id = get_drive_files(drive_path)[0]['id']
+
+        file = drive.CreateFile({'id': file_id})
+
+        action_verbose(f"Deleting {drive_path} from drive")
+
+        if trash:
+            file.Trash()
+        else:
+            file.Delete()
+
+        action_status_verbose()
+    else:
+        error_verbose(f"{drive_path} not found in drive. Exiting...")
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
 def upload_files_to_drive(local_path, drive_path, create_directories=True):
     """
     Upload an specific file or a folder with its content to drive
@@ -351,6 +435,9 @@ def download_drive_files(drive_path, local_path):
         error_verbose(f"'{drive_path}' do not exists in drive. Exiting...")
         return
 
+    if local_path == '.' or local_path == './':
+        local_path = f"{os.getcwd()}/{os.path.basename(drive_path)}"
+
     if os.path.exists(local_path):
         error_verbose(f"'{local_path}' already exists in local path. Exiting...")
         return
@@ -382,5 +469,21 @@ def download_drive_files(drive_path, local_path):
 
 
 if __name__ == "__main__":
-    google_auth = authenticate(CREDENTIALS_FILE)
-    drive = GoogleDrive(google_auth)
+    arg_parser = argparse.ArgumentParser()
+
+    arg_parser.add_argument('-u', '--upload', metavar=('<local_source_path>', '<drive_destination_path>'),
+                            type=str, nargs=2, required=False, help='Upload a file or folder from local to drive')
+    arg_parser.add_argument('-d', '--download', metavar=('<local_drive_path>', '<local_destination_path>'),
+                            type=str, nargs=2, required=False, help='Download a file or folder from drive to local')
+    arg_parser.add_argument('-r', '--remove', metavar='<drive_path>', type=str, nargs=1, required=False,
+                            help='Remove a file or folder from drive')
+
+    user_parameters = arg_parser.parse_args()
+
+    if check_script_parameters(user_parameters):
+        google_auth = authenticate(CREDENTIALS_FILE)
+        drive = GoogleDrive(google_auth)
+
+        process_user_request(user_parameters)
+    else:
+        arg_parser.print_help()
