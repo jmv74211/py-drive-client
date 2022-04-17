@@ -4,3 +4,8 @@
 ## App credentials
 client_secrets.json
 credentials.json
+
+# Installation files
+dist
+build
+*.egg-info
