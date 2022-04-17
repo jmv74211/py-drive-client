@@ -1,7 +1,7 @@
 """
 Author: @jmv74211
 
-App to manage files in Google drive. The following actions can be performed:
+App to manage files in Google drive from local console. The following actions can be performed:
 
 - List files in Google drive
 - Upload files or directories to Google drive.
@@ -31,8 +31,9 @@ from pydrive.auth import GoogleAuth
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
-DEFAULT_CREDENTIALS_FILE = 'credentials.json'
+CREDENTIALS_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'credentials')
+DEFAULT_APP_CREDENTIALS_FILE = os.path.join(CREDENTIALS_PATH, 'client_secrets.json')
+DEFAULT_USER_CREDENTIALS_FILE = os.path.join(CREDENTIALS_PATH, 'credentials.json')
 LOGGER = logging.getLogger('py_drive')
 COLORS = {
     'GREEN': '\033[92m',
@@ -85,6 +86,13 @@ def _set_logging(debug):
     LOGGER.addHandler(handler)
 
 
+def _check_credentials_file():
+    """Check if the app credentials file 'client_secrets.json' exist"""
+    if not os.path.exists(DEFAULT_APP_CREDENTIALS_FILE):
+        _error("Could not find the app credentials file 'client_secrets.json'")
+        sys.exit(1)
+
+
 def _get_parameters():
     """Get the user parameters when the app is run.
 
@@ -97,12 +105,10 @@ def _get_parameters():
                             help='List files from drive')
     arg_parser.add_argument('-u', '--upload', metavar=('<local_source_path>', '<drive_destination_path>'),
                             type=str, nargs=2, required=False, help='Upload a file or folder from local to drive')
-    arg_parser.add_argument('-d', '--download', metavar=('<local_drive_path>', '<local_destination_path>'),
+    arg_parser.add_argument('-d', '--download', metavar=('<drive_object_path>', '<local_destination_path>'),
                             type=str, nargs=2, required=False, help='Download a file or folder from drive to local')
     arg_parser.add_argument('-r', '--remove', metavar='<drive_path>', type=str, required=False,
                             help='Remove a file or folder from drive')
-    arg_parser.add_argument('-c', '--credentials', metavar='<credentials_file>', type=str, required=False,
-                            default=DEFAULT_CREDENTIALS_FILE, help='Remove a file or folder from drive')
     arg_parser.add_argument('-v', '--debug', action='store_true', required=False, help='Activate debug logging')
 
     return arg_parser.parse_args()
@@ -133,7 +139,7 @@ def _validate_parameters(input_parameters):
     _debug('Parameters have been successfully validated')
 
 
-def _drive_authentication(credentials_file):
+def _drive_authentication(credentials_file=DEFAULT_USER_CREDENTIALS_FILE):
     """Get drive authentication using a credentials file.
 
     This process will load and validate the credentials file. If the credentials file does not exist or has expired,
@@ -150,6 +156,9 @@ def _drive_authentication(credentials_file):
     """
     _debug('Authenticating with Drive API')
     google_auth = GoogleAuth()
+
+    # Set app credentials path to the Google Auth object (needed when calling google_auth.LocalWebserverAuth())
+    google_auth.DEFAULT_SETTINGS['client_config_file'] = DEFAULT_APP_CREDENTIALS_FILE
 
     # Load credentials file if exist
     if os.path.exists(credentials_file):
@@ -476,12 +485,14 @@ def main():
     """Main process:
         - Get the input parameters.
         - Validate parameters.
+        - Check credentials file.
         - Authenticate the request and process it.
     """
     input_parameters = _get_parameters()
     _set_logging(input_parameters.debug)
     _validate_parameters(input_parameters)
-    drive = GoogleDrive(_drive_authentication(input_parameters.credentials))
+    _check_credentials_file()
+    drive = GoogleDrive(_drive_authentication())
     _process_request(drive, input_parameters)
 
 
